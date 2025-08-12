@@ -1,6 +1,7 @@
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useKontent } from '../contexts/KontentContext'
+import { useWebhook } from '../contexts/WebhookContext'
 import { 
   Home, 
   Webhook, 
@@ -26,6 +27,7 @@ const navigation = [
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const { environmentId, userEmail, userRoles, isLoading, error } = useKontent()
+  const { state } = useWebhook()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -105,19 +107,25 @@ export default function Layout({ children }: LayoutProps) {
                 <div className="px-3 py-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">Total</span>
-                    <span className="font-medium text-gray-900">12</span>
+                    <span className="font-medium text-gray-900">
+                      {state.stats.total || 0}
+                    </span>
                   </div>
                 </div>
                 <div className="px-3 py-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">Active</span>
-                    <span className="font-medium text-success-600">8</span>
+                    <span className="font-medium text-success-600">
+                      {state.stats.active || 0}
+                    </span>
                   </div>
                 </div>
                 <div className="px-3 py-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">Success Rate</span>
-                    <span className="font-medium text-primary-600">94%</span>
+                    <span className="font-medium text-primary-600">
+                      {state.stats.successRate ? `${state.stats.successRate.toFixed(1)}%` : '0%'}
+                    </span>
                   </div>
                 </div>
               </div>

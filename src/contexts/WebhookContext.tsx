@@ -168,11 +168,12 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       }
 
       // TODO: Implement actual webhook testing
+      // For now, return a placeholder result
       const testResult: WebhookTestResult = {
-        success: Math.random() > 0.3, // Simulate 70% success rate
-        statusCode: Math.random() > 0.3 ? 200 : 500,
-        responseTime: Math.floor(Math.random() * 1000) + 100,
-        response: 'Test response',
+        success: false,
+        statusCode: 0,
+        responseTime: 0,
+        response: 'Webhook testing not yet implemented',
         timestamp: new Date().toISOString(),
       }
 
@@ -188,41 +189,14 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       dispatch({ type: 'SET_LOADING', payload: true })
       dispatch({ type: 'SET_ERROR', payload: null })
       
-      // TODO: Implement actual API call to Kontent.ai
-      // For now, using mock data
-      const mockWebhooks: Webhook[] = [
-        {
-          id: '1',
-          name: 'Content Update Webhook',
-          url: 'https://api.example.com/webhooks/content',
-          triggers: [],
-          headers: { 'Authorization': 'Bearer token123' },
-          isActive: true,
-          environmentId: 'prod',
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-15T00:00:00Z',
-          lastTriggered: '2024-01-15T10:30:00Z',
-          deliveryAttempts: 150,
-          successfulDeliveries: 142,
-          failedDeliveries: 8,
-        },
-        {
-          id: '2',
-          name: 'Asset Upload Webhook',
-          url: 'https://api.example.com/webhooks/assets',
-          triggers: [],
-          headers: { 'X-API-Key': 'key456' },
-          isActive: false,
-          environmentId: 'prod',
-          createdAt: '2024-01-05T00:00:00Z',
-          updatedAt: '2024-01-10T00:00:00Z',
-          deliveryAttempts: 45,
-          successfulDeliveries: 40,
-          failedDeliveries: 5,
-        },
-      ]
-      
-      dispatch({ type: 'SET_WEBHOOKS', payload: mockWebhooks })
+      if (!environmentId) {
+        dispatch({ type: 'SET_WEBHOOKS', payload: [] })
+        return
+      }
+
+      // TODO: Implement actual API call to Kontent.ai using kontentService
+      // For now, return empty array - will be populated when API is implemented
+      dispatch({ type: 'SET_WEBHOOKS', payload: [] })
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to fetch webhooks' })
     } finally {

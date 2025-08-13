@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, ReactNode, useCallback, useMemo } from 'react'
+import React, { createContext, useContext, useReducer, ReactNode, useCallback, useMemo, useRef } from 'react'
 import { Webhook, WebhookFormData, WebhookTestResult, WebhookStats, WebhookTrigger } from '../types/webhook'
 import { useKontent } from './KontentContext'
 
@@ -214,6 +214,10 @@ interface WebhookProviderProps {
 export function WebhookProvider({ children }: WebhookProviderProps) {
   const [state, dispatch] = useReducer(webhookReducer, initialState)
   const { environmentId, apiKey } = useKontent()
+  
+  // Use ref to access current state in callbacks
+  const stateRef = useRef(state)
+  stateRef.current = state
 
   const createWebhook = useCallback(async (data: WebhookFormData) => {
     try {
@@ -294,10 +298,10 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       
       // Update stats in both scenarios
       const updatedStats = {
-        ...state.stats,
-        total: state.stats.total + 1,
-        active: state.stats.active + (data.isActive ? 1 : 0),
-        inactive: state.stats.inactive + (data.isActive ? 0 : 1),
+        ...stateRef.current.stats,
+        total: stateRef.current.stats.total + 1,
+        active: stateRef.current.stats.active + (data.isActive ? 1 : 0),
+        inactive: stateRef.current.stats.inactive + (data.isActive ? 0 : 1),
       }
       console.log('Updating stats:', updatedStats)
       dispatch({ type: 'SET_STATS', payload: updatedStats })
@@ -315,7 +319,7 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       dispatch({ type: 'SET_LOADING', payload: false })
       console.log('Loading state set to false')
     }
-  }, [environmentId, apiKey, state.stats])
+  }, [environmentId, apiKey])
 
   const updateWebhook = useCallback(async (id: string, data: WebhookFormData) => {
     try {
@@ -377,12 +381,12 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       }
       
       // Update stats if active status changed (in both scenarios)
-      const existingWebhook = state.webhooks.find(w => w.id === id)
+      const existingWebhook = stateRef.current.webhooks.find(w => w.id === id)
       if (existingWebhook && existingWebhook.isActive !== data.isActive) {
         const updatedStats = {
-          ...state.stats,
-          active: state.stats.active + (data.isActive ? 1 : -1),
-          inactive: state.stats.inactive + (data.isActive ? -1 : 1),
+          ...stateRef.current.stats,
+          active: stateRef.current.stats.active + (data.isActive ? 1 : -1),
+          inactive: stateRef.current.stats.inactive + (data.isActive ? -1 : 1),
         }
         dispatch({ type: 'SET_STATS', payload: updatedStats })
       }
@@ -394,7 +398,7 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false })
     }
-  }, [environmentId, apiKey, state.webhooks, state.stats])
+  }, [environmentId, apiKey])
 
   const deleteWebhook = useCallback(async (id: string) => {
     try {
@@ -414,7 +418,7 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
           await webhookService.deleteWebhook(environmentId || 'default', apiKey, id)
           
           // Get webhook info before deletion for stats update
-          const webhookToDelete = state.webhooks.find(w => w.id === id)
+          const webhookToDelete = stateRef.current.webhooks.find(w => w.id === id)
           
           // Remove from local state after successful API call
           dispatch({ type: 'DELETE_WEBHOOK', payload: id })
@@ -422,10 +426,10 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
           // Update stats
           if (webhookToDelete) {
             const updatedStats = {
-              ...state.stats,
-              total: state.stats.total - 1,
-              active: state.stats.active - (webhookToDelete.isActive ? 1 : 0),
-              inactive: state.stats.inactive - (webhookToDelete.isActive ? 0 : 1),
+              ...stateRef.current.stats,
+              total: stateRef.current.stats.total - 1,
+              active: stateRef.current.stats.active - (webhookToDelete.isActive ? 1 : 0),
+              inactive: stateRef.current.stats.inactive - (webhookToDelete.isActive ? 0 : 1),
             }
             dispatch({ type: 'SET_STATS', payload: updatedStats })
           }
@@ -440,7 +444,7 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
         await new Promise(resolve => setTimeout(resolve, 500))
         
         // Get webhook info before deletion for stats update
-        const webhookToDelete = state.webhooks.find(w => w.id === id)
+        const webhookToDelete = stateRef.current.webhooks.find(w => w.id === id)
         
         // Remove from local state
         dispatch({ type: 'DELETE_WEBHOOK', payload: id })
@@ -448,10 +452,10 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
         // Update stats
         if (webhookToDelete) {
           const updatedStats = {
-            ...state.stats,
-            total: state.stats.total - 1,
-            active: state.stats.active - (webhookToDelete.isActive ? 1 : 0),
-            inactive: state.stats.inactive - (webhookToDelete.isActive ? 0 : 1),
+            ...stateRef.current.stats,
+            total: stateRef.current.stats.total - 1,
+            active: stateRef.current.stats.active - (webhookToDelete.isActive ? 1 : 0),
+            inactive: stateRef.current.stats.inactive - (webhookToDelete.isActive ? 0 : 1),
           }
           dispatch({ type: 'SET_STATS', payload: updatedStats })
         }
@@ -464,11 +468,11 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false })
     }
-  }, [environmentId, apiKey, state.webhooks, state.stats])
+  }, [environmentId, apiKey])
 
   const testWebhook = useCallback(async (id: string): Promise<WebhookTestResult> => {
     try {
-      const webhook = state.webhooks.find(w => w.id === id)
+      const webhook = stateRef.current.webhooks.find(w => w.id === id)
       if (!webhook) {
         throw new Error('Webhook not found')
       }
@@ -725,7 +729,7 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       }
 
       // Update webhook stats for failed test
-      const webhook = state.webhooks.find(w => w.id === id)
+      const webhook = stateRef.current.webhooks.find(w => w.id === id)
       if (webhook) {
         const updatedWebhook = {
           ...webhook,
@@ -736,7 +740,7 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
         dispatch({ type: 'UPDATE_WEBHOOK', payload: updatedWebhook })
         
         // Recalculate stats after failed test
-        const currentWebhooks = [...state.webhooks.filter(w => w.id !== id), updatedWebhook]
+        const currentWebhooks = [...stateRef.current.webhooks.filter(w => w.id !== id), updatedWebhook]
         const stats: WebhookStats = {
           total: currentWebhooks.length,
           active: currentWebhooks.filter(w => w.isActive).length,
@@ -754,7 +758,7 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       
       throw error
     }
-  }, [state.webhooks])
+  }, [])
 
   const fetchWebhooks = useCallback(async () => {
     try {
@@ -797,7 +801,7 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
   const fetchStats = useCallback(async () => {
     try {
       // Get the current webhooks from state
-      const currentWebhooks = state.webhooks
+      const currentWebhooks = stateRef.current.webhooks
       
       const stats: WebhookStats = {
         total: currentWebhooks.length,

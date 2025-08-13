@@ -299,14 +299,14 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
           console.log('Environment verified, creating webhook...')
           
           // Format webhook data according to Kontent.ai Management API v2 specification
-          // Try with minimal required fields first
+          // The triggers field should be an object, not an array
           const apiWebhookData = {
             name: newWebhook.name,
             url: newWebhook.url,
-            triggers: newWebhook.triggers.map(trigger => ({
-              codename: trigger.codename,
-              enabled: trigger.isEnabled
-            }))
+            triggers: newWebhook.triggers.reduce((acc, trigger) => {
+              acc[trigger.codename] = trigger.isEnabled
+              return acc
+            }, {} as Record<string, boolean>)
             // Removed headers and is_active temporarily to test
           }
           
@@ -404,13 +404,14 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       if (apiKey) {
         try {
           // Format webhook data according to Kontent.ai Management API v2 specification
+          // The triggers field should be an object, not an array
           const apiWebhookData = {
             name: updatedWebhook.name,
             url: updatedWebhook.url,
-            triggers: updatedWebhook.triggers.map(trigger => ({
-              codename: trigger.codename,
-              enabled: trigger.isEnabled
-            })),
+            triggers: updatedWebhook.triggers.reduce((acc, trigger) => {
+              acc[trigger.codename] = trigger.isEnabled
+              return acc
+            }, {} as Record<string, boolean>),
             headers: updatedWebhook.headers,
             is_active: updatedWebhook.isActive
           }

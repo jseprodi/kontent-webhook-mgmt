@@ -23,6 +23,16 @@ const webhookService = {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
       console.error('API error response:', response.status, response.statusText, errorData)
+      
+      // Enhanced error handling for validation errors
+      if (errorData.validation_errors && Array.isArray(errorData.validation_errors)) {
+        console.error('Validation errors details:', errorData.validation_errors)
+        const validationDetails = errorData.validation_errors
+          .map((err: any) => `${err.field || 'Unknown field'}: ${err.message || 'Invalid value'}`)
+          .join('; ')
+        throw new Error(`Validation failed: ${validationDetails}`)
+      }
+      
       throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`)
     }
     
@@ -289,15 +299,15 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
           console.log('Environment verified, creating webhook...')
           
           // Format webhook data according to Kontent.ai Management API v2 specification
+          // Try with minimal required fields first
           const apiWebhookData = {
             name: newWebhook.name,
             url: newWebhook.url,
             triggers: newWebhook.triggers.map(trigger => ({
               codename: trigger.codename,
               enabled: trigger.isEnabled
-            })),
-            headers: newWebhook.headers,
-            is_active: newWebhook.isActive
+            }))
+            // Removed headers and is_active temporarily to test
           }
           
           console.log('API webhook data:', apiWebhookData)

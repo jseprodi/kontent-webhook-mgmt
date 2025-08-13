@@ -136,41 +136,94 @@ export default function Settings() {
     }
 
     try {
-      // Test the API connection by making a real request
-      const response = await fetch(`https://manage.kontent.ai/v2/projects/${config.kontent.environmentId}/webhooks`, {
+      // First, test if the API key is valid by checking the projects endpoint
+      const projectsResponse = await fetch(`https://manage.kontent.ai/v2/projects`, {
         headers: {
           'Authorization': `Bearer ${config.kontent.apiKey}`,
           'Content-Type': 'application/json',
         },
       })
 
-      if (response.ok) {
-        setTestResult({
-          success: true,
-          message: 'Connection successful! API key is valid and environment is accessible.'
+      if (!projectsResponse.ok) {
+        if (projectsResponse.status === 401) {
+          setTestResult({
+            success: false,
+            message: 'Authentication failed. Please check your API key.'
+          })
+        } else if (projectsResponse.status === 403) {
+          setTestResult({
+            success: false,
+            message: 'Access denied. Please check your API key permissions.'
+          })
+        } else {
+          setTestResult({
+            success: false,
+            message: `API access failed with status ${projectsResponse.status}. Please check your API key.`
+          })
+        }
+        return
+      }
+
+      // If we can access projects, now test the specific environment
+      try {
+        const environmentResponse = await fetch(`https://manage.kontent.ai/v2/projects/${config.kontent.environmentId}`, {
+          headers: {
+            'Authorization': `Bearer ${config.kontent.apiKey}`,
+            'Content-Type': 'application/json',
+          },
         })
-      } else if (response.status === 401) {
+
+        if (environmentResponse.ok) {
+          // Environment exists, now test webhook access
+          try {
+            const webhooksResponse = await fetch(`https://manage.kontent.ai/v2/projects/${config.kontent.environmentId}/webhooks`, {
+              headers: {
+                'Authorization': `Bearer ${config.kontent.apiKey}`,
+                'Content-Type': 'application/json',
+              },
+            })
+
+            if (webhooksResponse.ok) {
+              setTestResult({
+                success: true,
+                message: 'Connection successful! API key is valid, environment exists, and webhook access is granted.'
+              })
+            } else if (webhooksResponse.status === 403) {
+              setTestResult({
+                success: false,
+                message: 'Environment found but webhook access denied. Please check your API key permissions for webhook management.'
+              })
+            } else {
+              setTestResult({
+                success: false,
+                message: `Environment found but webhook endpoint returned status ${webhooksResponse.status}. This might indicate a permission issue.`
+              })
+            }
+          } catch (webhookError) {
+            setTestResult({
+              success: false,
+              message: 'Environment found but webhook endpoint is not accessible. This might indicate a permission issue.'
+            })
+          }
+        } else if (environmentResponse.status === 404) {
+          setTestResult({
+            success: false,
+            message: 'Environment not found. Please check your Environment ID. Make sure you\'re using the correct Project ID from your Kontent.ai project settings.'
+          })
+        } else {
+          setTestResult({
+            success: false,
+            message: `Environment access failed with status ${environmentResponse.status}. Please check your configuration.`
+          })
+        }
+      } catch (environmentError) {
         setTestResult({
           success: false,
-          message: 'Authentication failed. Please check your API key.'
-        })
-      } else if (response.status === 403) {
-        setTestResult({
-          success: false,
-          message: 'Access denied. Please check your API key permissions.'
-        })
-      } else if (response.status === 404) {
-        setTestResult({
-          success: false,
-          message: 'Environment not found. Please check your Environment ID.'
-        })
-      } else {
-        setTestResult({
-          success: false,
-          message: `Connection failed with status ${response.status}. Please check your configuration.`
+          message: 'Failed to access environment. Please check your Environment ID and network connection.'
         })
       }
     } catch (error) {
+      console.error('Connection test error:', error)
       setTestResult({
         success: false,
         message: 'Connection failed. Please check your network connection and configuration.'
@@ -444,7 +497,7 @@ export default function Settings() {
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              Find this in your Kontent.ai project settings
+              Find this in your Kontent.ai project settings. Go to Project Settings → General → Project ID. The Project ID is your Environment ID.
             </p>
           </div>
 
@@ -472,7 +525,7 @@ export default function Settings() {
             </div>
             <div className="mt-1 flex items-center space-x-2">
               <p className="text-xs text-gray-500">
-                Create this in Project Settings → API Keys → Management API keys
+                Create this in Project Settings → API Keys → Management API keys. Make sure it has webhook management permissions.
               </p>
               {config.kontent.apiKey && (
                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-success-100 text-success-800">

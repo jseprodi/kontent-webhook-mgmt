@@ -10,6 +10,8 @@ interface KontentContextType {
   userEmail: string | null
   userRoles: readonly { readonly id: string; readonly codename: string | null }[] | null
   appConfig: CustomAppContext | null
+  apiKey: string | null
+  setApiKey: (key: string) => void
 }
 
 const KontentContext = createContext<KontentContextType | undefined>(undefined)
@@ -30,6 +32,7 @@ export function KontentProvider({ children }: KontentProviderProps) {
   const [context, setContext] = useState<CustomAppContext | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [apiKey, setApiKey] = useState<string | null>(null)
 
   useEffect(() => {
     async function initializeKontent() {
@@ -73,7 +76,9 @@ export function KontentProvider({ children }: KontentProviderProps) {
     userEmail: context && !context.isError ? context.context.userEmail : null,
     userRoles: context && !context.isError ? context.context.userRoles : null,
     appConfig: context || null,
-  }), [context, isLoading, error])
+    apiKey,
+    setApiKey,
+  }), [context, isLoading, error, apiKey, setApiKey])
 
   return (
     <KontentContext.Provider value={value}>

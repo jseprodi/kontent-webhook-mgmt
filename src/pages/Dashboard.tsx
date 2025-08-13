@@ -11,11 +11,14 @@ import {
   AlertTriangle,
   Plus,
   Settings,
-  BarChart3
+  BarChart3,
+  Info
 } from 'lucide-react'
 
 export default function Dashboard() {
   const { state, fetchWebhooks, fetchStats } = useWebhook()
+  const { getCurrentMode } = useWebhook()
+  const currentMode = getCurrentMode()
 
   useEffect(() => {
     fetchWebhooks()
@@ -56,13 +59,83 @@ export default function Dashboard() {
   const recentWebhooks = state.webhooks.slice(0, 5)
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
         <p className="mt-2 text-gray-600">
-          Overview of your webhook performance and recent activity
+          Overview of your webhook management system
         </p>
+      </div>
+
+      {/* Mode Status Card */}
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            {currentMode.mode === 'api' ? (
+              <CheckCircle className="h-8 w-8 text-success-600" />
+            ) : currentMode.mode === 'fallback' ? (
+              <AlertTriangle className="h-8 w-8 text-warning-600" />
+            ) : (
+              <Info className="h-8 w-8 text-gray-600" />
+            )}
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {currentMode.mode === 'api' ? 'Production Mode' : 
+                 currentMode.mode === 'fallback' ? 'Development Mode' : 'Unknown Mode'}
+              </h2>
+              <p className="text-sm text-gray-600">
+                {currentMode.description}
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            {currentMode.needsApiKey && (
+              <Link
+                to="/settings"
+                className="btn-primary inline-flex items-center"
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Configure API Key
+              </Link>
+            )}
+            {!currentMode.needsApiKey && (
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-success-100 text-success-800">
+                <CheckCircle className="h-4 w-4 mr-1" />
+                API Configured
+              </span>
+            )}
+          </div>
+        </div>
+        
+        {currentMode.mode === 'fallback' && (
+          <div className="mt-4 p-4 bg-warning-50 rounded-lg border border-warning-200">
+            <div className="flex items-start space-x-3">
+              <Info className="h-5 w-5 text-warning-600 mt-0.5" />
+              <div className="text-sm text-warning-700">
+                <p className="font-medium">Local Simulation Mode</p>
+                <p className="mt-1">
+                  You're currently using local simulation for development. Webhooks will be stored locally but won't be sent to Kontent.ai. 
+                  To use real webhook functionality, set your Management API key in Settings.
+                </p>
+                <div className="mt-3 flex items-center space-x-4 text-xs">
+                  <span className="flex items-center">
+                    <span className="w-2 h-2 bg-warning-500 rounded-full mr-2"></span>
+                    Webhooks stored locally only
+                  </span>
+                  <span className="flex items-center">
+                    <span className="w-2 h-2 bg-warning-500 rounded-full mr-2"></span>
+                    No real API calls
+                  </span>
+                  <span className="flex items-center">
+                    <span className="w-2 h-2 bg-warning-500 rounded-full mr-2"></span>
+                    Development/testing only
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stats Grid */}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useWebhook } from '../contexts/WebhookContext'
 import { 
   Plus, 
@@ -13,11 +13,15 @@ import {
   ExternalLink,
   Activity,
   Webhook,
-  X
+  X,
+  AlertTriangle
 } from 'lucide-react'
 
 export default function WebhooksList() {
-  const { state, fetchWebhooks, deleteWebhook, testWebhook } = useWebhook()
+  const navigate = useNavigate()
+  const { state, deleteWebhook, testWebhook, fetchWebhooks } = useWebhook()
+  const { getCurrentMode } = useWebhook()
+  const currentMode = getCurrentMode()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null)
@@ -118,7 +122,7 @@ export default function WebhooksList() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Webhooks</h1>
           <p className="mt-2 text-gray-600">
-            Manage and monitor your webhook configurations
+            Manage your webhook configurations and monitor their performance
           </p>
         </div>
         <Link
@@ -129,6 +133,29 @@ export default function WebhooksList() {
           New Webhook
         </Link>
       </div>
+
+      {/* Mode Indicator */}
+      {currentMode.mode === 'fallback' && (
+        <div className="bg-warning-50 border border-warning-200 rounded-lg p-4">
+          <div className="flex items-center space-x-3">
+            <AlertTriangle className="h-5 w-5 text-warning-600" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-warning-800">
+                Development Mode Active
+              </p>
+              <p className="text-xs text-warning-700 mt-1">
+                Webhooks are being created and managed locally. They will not be sent to Kontent.ai until you configure an API key.
+              </p>
+            </div>
+            <Link
+              to="/settings"
+              className="text-xs text-warning-700 hover:text-warning-800 underline"
+            >
+              Configure API
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card">

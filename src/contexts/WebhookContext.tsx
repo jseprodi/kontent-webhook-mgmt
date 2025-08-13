@@ -98,6 +98,7 @@ interface WebhookState {
   error: string | null
   stats: WebhookStats
   testResults: WebhookTestResult[]
+  mode: 'api' | 'fallback' | 'unknown'
 }
 
 type WebhookAction =
@@ -110,38 +111,23 @@ type WebhookAction =
   | { type: 'SET_SELECTED_WEBHOOK'; payload: Webhook | null }
   | { type: 'SET_STATS'; payload: WebhookStats }
   | { type: 'ADD_TEST_RESULT'; payload: WebhookTestResult }
+  | { type: 'SET_MODE'; payload: 'api' | 'fallback' | 'unknown' }
 
 const initialState: WebhookState = {
-  webhooks: [
-    {
-      id: '1',
-      name: 'Sample Webhook',
-      url: 'https://httpbin.org/post',
-      triggers: [
-        { id: 'content_item_variant_changed', name: 'Content Item Variant Changed', codename: 'content_item_variant_changed', description: 'Triggered when a content item variant is modified', isEnabled: true }
-      ],
-      headers: { 'X-Custom-Header': 'test-value' },
-      isActive: true,
-      environmentId: 'default',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      deliveryAttempts: 0,
-      successfulDeliveries: 0,
-      failedDeliveries: 0,
-    }
-  ],
+  webhooks: [],
   selectedWebhook: null,
   isLoading: false,
   error: null,
   stats: {
-    total: 1,
-    active: 1,
+    total: 0,
+    active: 0,
     inactive: 0,
     totalDeliveries: 0,
     successRate: 0,
     averageResponseTime: 0,
   },
   testResults: [],
+  mode: 'unknown',
 }
 
 function webhookReducer(state: WebhookState, action: WebhookAction): WebhookState {
@@ -183,6 +169,9 @@ function webhookReducer(state: WebhookState, action: WebhookAction): WebhookStat
     case 'ADD_TEST_RESULT':
       newState = { ...state, testResults: [action.payload, ...state.testResults] }
       break
+    case 'SET_MODE':
+      newState = { ...state, mode: action.payload }
+      break
     default:
       newState = state
   }
@@ -199,6 +188,7 @@ interface WebhookContextType {
   testWebhook: (id: string) => Promise<WebhookTestResult>
   fetchWebhooks: () => Promise<void>
   fetchStats: () => Promise<void>
+  getCurrentMode: () => { mode: 'api' | 'fallback' | 'unknown'; description: string; needsApiKey: boolean }
 }
 
 const WebhookContext = createContext<WebhookContextType | undefined>(undefined)
@@ -221,8 +211,13 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
 
   const createWebhook = useCallback(async (data: WebhookFormData) => {
     try {
+      console.log('Creating webhook with data:', data)
+      console.log('Current API key:', apiKey ? 'Set' : 'Not set')
+      console.log('Current environment ID:', environmentId)
+      
       dispatch({ type: 'SET_LOADING', payload: true })
       dispatch({ type: 'SET_ERROR', payload: null })
+      dispatch({ type: 'SET_MODE', payload: 'api' })
       
       // Convert string[] triggers to WebhookTrigger[] format
       const triggers: WebhookTrigger[] = data.triggers.map(triggerId => ({
@@ -249,33 +244,51 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
         failedDeliveries: 0,
       }
 
+      console.log('Created webhook object:', newWebhook)
+
       // Use the real Kontent.ai API service
       if (apiKey) {
+        console.log('Using real API service')
         try {
           const createdWebhook = await webhookService.createWebhook(environmentId || 'default', apiKey, newWebhook)
+          console.log('API response:', createdWebhook)
           newWebhook.id = createdWebhook.id // Update ID with the one from the API
           newWebhook.createdAt = createdWebhook.createdAt
           newWebhook.updatedAt = createdWebhook.updatedAt
+          
+          // Add to local state after successful API call
+          console.log('Adding webhook to local state via API path')
+          dispatch({ type: 'ADD_WEBHOOK', payload: newWebhook })
         } catch (error) {
+          console.error('API error:', error)
           const errorMessage = error instanceof Error ? error.message : 'Failed to create webhook'
           dispatch({ type: 'SET_ERROR', payload: errorMessage })
+          dispatch({ type: 'SET_MODE', payload: 'fallback' })
           throw error
         }
       } else {
+        console.log('Using fallback local simulation')
         // Fallback to local simulation if API key is not available
         await new Promise(resolve => setTimeout(resolve, 500))
+        console.log('Adding webhook to local state via fallback path')
         dispatch({ type: 'ADD_WEBHOOK', payload: newWebhook })
-        // Update stats
-        const updatedStats = {
-          ...state.stats,
-          total: state.stats.total + 1,
-          active: state.stats.active + (data.isActive ? 1 : 0),
-          inactive: state.stats.inactive + (data.isActive ? 0 : 1),
-        }
-        dispatch({ type: 'SET_STATS', payload: updatedStats })
+        dispatch({ type: 'SET_MODE', payload: 'fallback' })
       }
       
+      // Update stats in both scenarios
+      const updatedStats = {
+        ...state.stats,
+        total: state.stats.total + 1,
+        active: state.stats.active + (data.isActive ? 1 : 0),
+        inactive: state.stats.inactive + (data.isActive ? 0 : 1),
+      }
+      console.log('Updating stats:', updatedStats)
+      dispatch({ type: 'SET_STATS', payload: updatedStats })
+      
+      console.log('Webhook creation completed successfully')
+      
     } catch (error) {
+      console.error('Error in createWebhook:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to create webhook'
       dispatch({ type: 'SET_ERROR', payload: errorMessage })
       throw error
@@ -288,6 +301,7 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
     try {
       dispatch({ type: 'SET_LOADING', payload: true })
       dispatch({ type: 'SET_ERROR', payload: null })
+      dispatch({ type: 'SET_MODE', payload: 'api' })
       
       // Convert string[] triggers to WebhookTrigger[] format
       const triggers: WebhookTrigger[] = data.triggers.map(triggerId => ({
@@ -321,26 +335,31 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
           updatedWebhook.id = updatedWebhookData.id
           updatedWebhook.createdAt = updatedWebhookData.createdAt
           updatedWebhook.updatedAt = updatedWebhookData.updatedAt
+          
+          // Update local state after successful API call
+          dispatch({ type: 'UPDATE_WEBHOOK', payload: updatedWebhook })
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Failed to update webhook'
           dispatch({ type: 'SET_ERROR', payload: errorMessage })
+          dispatch({ type: 'SET_MODE', payload: 'fallback' })
           throw error
         }
       } else {
         // Fallback to local simulation if API key is not available
         await new Promise(resolve => setTimeout(resolve, 500))
         dispatch({ type: 'UPDATE_WEBHOOK', payload: updatedWebhook })
-        
-        // Update stats if active status changed
-        const existingWebhook = state.webhooks.find(w => w.id === id)
-        if (existingWebhook && existingWebhook.isActive !== data.isActive) {
-          const updatedStats = {
-            ...state.stats,
-            active: state.stats.active + (data.isActive ? 1 : -1),
-            inactive: state.stats.inactive + (data.isActive ? -1 : 1),
-          }
-          dispatch({ type: 'SET_STATS', payload: updatedStats })
+        dispatch({ type: 'SET_MODE', payload: 'fallback' })
+      }
+      
+      // Update stats if active status changed (in both scenarios)
+      const existingWebhook = state.webhooks.find(w => w.id === id)
+      if (existingWebhook && existingWebhook.isActive !== data.isActive) {
+        const updatedStats = {
+          ...state.stats,
+          active: state.stats.active + (data.isActive ? 1 : -1),
+          inactive: state.stats.inactive + (data.isActive ? -1 : 1),
         }
+        dispatch({ type: 'SET_STATS', payload: updatedStats })
       }
       
     } catch (error) {
@@ -356,14 +375,33 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
     try {
       dispatch({ type: 'SET_LOADING', payload: true })
       dispatch({ type: 'SET_ERROR', payload: null })
+      dispatch({ type: 'SET_MODE', payload: 'api' })
       
       // Use the real Kontent.ai API service
       if (apiKey) {
         try {
           await webhookService.deleteWebhook(environmentId || 'default', apiKey, id)
+          
+          // Get webhook info before deletion for stats update
+          const webhookToDelete = state.webhooks.find(w => w.id === id)
+          
+          // Remove from local state after successful API call
+          dispatch({ type: 'DELETE_WEBHOOK', payload: id })
+          
+          // Update stats
+          if (webhookToDelete) {
+            const updatedStats = {
+              ...state.stats,
+              total: state.stats.total - 1,
+              active: state.stats.active - (webhookToDelete.isActive ? 1 : 0),
+              inactive: state.stats.inactive - (webhookToDelete.isActive ? 0 : 1),
+            }
+            dispatch({ type: 'SET_STATS', payload: updatedStats })
+          }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Failed to delete webhook'
           dispatch({ type: 'SET_ERROR', payload: errorMessage })
+          dispatch({ type: 'SET_MODE', payload: 'fallback' })
           throw error
         }
       } else {
@@ -691,6 +729,7 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
     try {
       dispatch({ type: 'SET_LOADING', payload: true })
       dispatch({ type: 'SET_ERROR', payload: null })
+      dispatch({ type: 'SET_MODE', payload: 'api' })
       
       // Use the real Kontent.ai API service
       if (apiKey) {
@@ -700,12 +739,14 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Failed to fetch webhooks'
           dispatch({ type: 'SET_ERROR', payload: errorMessage })
+          dispatch({ type: 'SET_MODE', payload: 'fallback' })
           throw error
         }
       } else {
         // Fallback to local simulation if API key is not available
         await new Promise(resolve => setTimeout(resolve, 500))
         dispatch({ type: 'SET_WEBHOOKS', payload: [] })
+        dispatch({ type: 'SET_MODE', payload: 'fallback' })
       }
       
     } catch (error) {
@@ -739,6 +780,22 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
     }
   }, [])
 
+  const getCurrentMode = useCallback(() => {
+    if (apiKey) {
+      return {
+        mode: 'api' as const,
+        description: 'Using Kontent.ai Management API v2',
+        needsApiKey: false,
+      }
+    } else {
+      return {
+        mode: 'fallback' as const,
+        description: 'Using local simulation (no API key)',
+        needsApiKey: true,
+      }
+    }
+  }, [apiKey])
+
   const value = useMemo<WebhookContextType>(() => ({
     state,
     dispatch,
@@ -748,7 +805,8 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
     testWebhook,
     fetchWebhooks,
     fetchStats,
-  }), [state, dispatch, createWebhook, updateWebhook, deleteWebhook, testWebhook, fetchWebhooks, fetchStats])
+    getCurrentMode,
+  }), [state, dispatch, createWebhook, updateWebhook, deleteWebhook, testWebhook, fetchWebhooks, fetchStats, getCurrentMode])
 
   return (
     <WebhookContext.Provider value={value}>

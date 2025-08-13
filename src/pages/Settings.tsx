@@ -14,48 +14,168 @@ import {
   Info
 } from 'lucide-react'
 
-export default function Settings() {
-  const { context, environmentId, userId, userEmail, userRoles, appConfig } = useKontent()
-  const [kontentConfig, setKontentConfig] = useState({
+interface AppConfig {
+  kontent: {
+    environmentId: string
+    apiKey: string
+    projectId: string
+  }
+  preferences: {
+    defaultEnvironment: string
+    autoTestWebhooks: boolean
+    retryFailedDeliveries: boolean
+    emailNotifications: boolean
+    browserNotifications: boolean
+  }
+}
+
+const defaultConfig: AppConfig = {
+  kontent: {
     environmentId: '',
     apiKey: '',
     projectId: '',
-  })
+  },
+  preferences: {
+    defaultEnvironment: '',
+    autoTestWebhooks: false,
+    retryFailedDeliveries: false,
+    emailNotifications: false,
+    browserNotifications: false,
+  }
+}
+
+export default function Settings() {
+  const { context, environmentId, userId, userEmail, userRoles, appConfig, apiKey, setApiKey } = useKontent()
+  const [config, setConfig] = useState<AppConfig>(defaultConfig)
   const [isSaving, setIsSaving] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [showError, setShowError] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
   const [copiedField, setCopiedField] = useState<string | null>(null)
   const [testResult, setTestResult] = useState<{
     success: boolean
     message: string
   } | null>(null)
 
+  // Load saved configuration on component mount
   useEffect(() => {
-    if (environmentId) {
-      setKontentConfig(prev => ({ ...prev, environmentId }))
+    const savedConfig = localStorage.getItem('webhook-manager-config')
+    if (savedConfig) {
+      try {
+        const parsed = JSON.parse(savedConfig)
+        setConfig(parsed)
+      } catch (error) {
+        console.error('Failed to parse saved config:', error)
+      }
     }
-  }, [environmentId])
+  }, [])
+
+  // Update environment ID when it's available from context
+  useEffect(() => {
+    if (environmentId && !config.kontent.environmentId) {
+      setConfig(prev => ({
+        ...prev,
+        kontent: { ...prev.kontent, environmentId }
+      }))
+    }
+  }, [environmentId, config.kontent.environmentId])
+
+  // Update API key when it's available from context
+  useEffect(() => {
+    if (apiKey && !config.kontent.apiKey) {
+      setConfig(prev => ({
+        ...prev,
+        kontent: { ...prev.kontent, apiKey }
+      }))
+    }
+  }, [apiKey, config.kontent.apiKey])
 
   const handleSave = async () => {
     setIsSaving(true)
-    // TODO: Implement actual save functionality
-    setTimeout(() => {
-      setIsSaving(false)
+    setShowError(false)
+    setErrorMessage('')
+
+    try {
+      // Validate required fields
+      if (!config.kontent.environmentId.trim()) {
+        throw new Error('Environment ID is required')
+      }
+      if (!config.kontent.apiKey.trim()) {
+        throw new Error('API Key is required')
+      }
+
+      // Save to localStorage
+      localStorage.setItem('webhook-manager-config', JSON.stringify(config))
+      
+      // Update the API key in KontentContext if it changed
+      if (config.kontent.apiKey !== apiKey) {
+        setApiKey(config.kontent.apiKey)
+      }
+
       setShowSuccess(true)
       setTimeout(() => setShowSuccess(false), 3000)
-    }, 1000)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save configuration'
+      setErrorMessage(message)
+      setShowError(true)
+      setTimeout(() => setShowError(false), 5000)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleTestConnection = async () => {
     setTestResult(null)
-    // TODO: Implement actual connection test
-    setTimeout(() => {
+    
+    if (!config.kontent.apiKey || !config.kontent.environmentId) {
       setTestResult({
-        success: Math.random() > 0.3,
-        message: Math.random() > 0.3 
-          ? 'Connection successful! API key is valid.'
-          : 'Connection failed. Please check your API key and environment ID.'
+        success: false,
+        message: 'Please provide both API Key and Environment ID before testing'
       })
-    }, 1500)
+      return
+    }
+
+    try {
+      // Test the API connection by making a real request
+      const response = await fetch(`https://manage.kontent.ai/v2/projects/${config.kontent.environmentId}/webhooks`, {
+        headers: {
+          'Authorization': `Bearer ${config.kontent.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (response.ok) {
+        setTestResult({
+          success: true,
+          message: 'Connection successful! API key is valid and environment is accessible.'
+        })
+      } else if (response.status === 401) {
+        setTestResult({
+          success: false,
+          message: 'Authentication failed. Please check your API key.'
+        })
+      } else if (response.status === 403) {
+        setTestResult({
+          success: false,
+          message: 'Access denied. Please check your API key permissions.'
+        })
+      } else if (response.status === 404) {
+        setTestResult({
+          success: false,
+          message: 'Environment not found. Please check your Environment ID.'
+        })
+      } else {
+        setTestResult({
+          success: false,
+          message: `Connection failed with status ${response.status}. Please check your configuration.`
+        })
+      }
+    } catch (error) {
+      setTestResult({
+        success: false,
+        message: 'Connection failed. Please check your network connection and configuration.'
+      })
+    }
   }
 
   const copyToClipboard = async (text: string, field: string) => {
@@ -69,12 +189,13 @@ export default function Settings() {
   }
 
   const exportConfig = () => {
-    const config = {
-      kontent: kontentConfig,
+    const exportData = {
+      ...config,
       timestamp: new Date().toISOString(),
+      version: '1.0.0'
     }
     
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -85,6 +206,66 @@ export default function Settings() {
     URL.revokeObjectURL(url)
   }
 
+  const importConfig = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const imported = JSON.parse(e.target?.result as string)
+        setConfig(imported)
+        
+        // Update API key in context if imported
+        if (imported.kontent?.apiKey) {
+          setApiKey(imported.kontent.apiKey)
+        }
+        
+        setShowSuccess(true)
+        setTimeout(() => setShowSuccess(false), 3000)
+      } catch (error) {
+        setErrorMessage('Failed to parse imported configuration file')
+        setShowError(true)
+        setTimeout(() => setShowError(false), 5000)
+      }
+    }
+    reader.readAsText(file)
+    
+    // Reset file input
+    event.target.value = ''
+  }
+
+  const updateConfig = (section: keyof AppConfig, key: string, value: any) => {
+    setConfig(prev => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [key]: value
+      }
+    }))
+  }
+
+  const clearConfig = () => {
+    if (window.confirm('Are you sure you want to clear all configuration? This action cannot be undone.')) {
+      localStorage.removeItem('webhook-manager-config')
+      setConfig(defaultConfig)
+      setApiKey('')
+      setShowSuccess(true)
+      setTimeout(() => setShowSuccess(false), 3000)
+    }
+  }
+
+  const resetToDefaults = () => {
+    if (window.confirm('Are you sure you want to reset all preferences to default values?')) {
+      setConfig(prev => ({
+        ...prev,
+        preferences: defaultConfig.preferences
+      }))
+      setShowSuccess(true)
+      setTimeout(() => setShowSuccess(false), 3000)
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -93,6 +274,29 @@ export default function Settings() {
         <p className="mt-2 text-gray-600">
           Configure your Kontent.ai connection and application preferences
         </p>
+        
+        {/* Configuration Status */}
+        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <div className={`w-3 h-3 rounded-full ${config.kontent.environmentId ? 'bg-success-500' : 'bg-gray-300'}`}></div>
+                <span className="text-sm text-gray-600">
+                  Environment ID: {config.kontent.environmentId ? 'Set' : 'Not Set'}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className={`w-3 h-3 rounded-full ${config.kontent.apiKey ? 'bg-success-500' : 'bg-gray-300'}`}></div>
+                <span className="text-sm text-gray-600">
+                  API Key: {config.kontent.apiKey ? 'Set' : 'Not Set'}
+                </span>
+              </div>
+            </div>
+            <div className="text-sm text-gray-500">
+              Last saved: {localStorage.getItem('webhook-manager-config') ? 'Recently' : 'Never'}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Success Message */}
@@ -102,6 +306,18 @@ export default function Settings() {
             <CheckCircle className="h-5 w-5 text-success-600 mr-2" />
             <span className="text-success-800 font-medium">
               Settings saved successfully!
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {showError && (
+        <div className="bg-danger-50 border border-danger-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-danger-600 mr-2" />
+            <span className="text-danger-800 font-medium">
+              {errorMessage}
             </span>
           </div>
         </div>
@@ -214,13 +430,13 @@ export default function Settings() {
                 type="text"
                 id="environmentId"
                 required
-                value={kontentConfig.environmentId}
-                onChange={(e) => setKontentConfig(prev => ({ ...prev, environmentId: e.target.value }))}
+                value={config.kontent.environmentId}
+                onChange={(e) => updateConfig('kontent', 'environmentId', e.target.value)}
                 className="input-field flex-1"
                 placeholder="e.g., 975bf280-fd91-488c-994c-2f04416e5ee3"
               />
               <button
-                onClick={() => copyToClipboard(kontentConfig.environmentId, 'envId')}
+                onClick={() => copyToClipboard(config.kontent.environmentId, 'envId')}
                 className="p-2 text-gray-400 hover:text-gray-600"
                 title="Copy Environment ID"
               >
@@ -241,22 +457,30 @@ export default function Settings() {
                 type="password"
                 id="apiKey"
                 required
-                value={kontentConfig.apiKey}
-                onChange={(e) => setKontentConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                value={config.kontent.apiKey}
+                onChange={(e) => updateConfig('kontent', 'apiKey', e.target.value)}
                 className="input-field flex-1"
                 placeholder="Enter your Management API key"
               />
               <button
-                onClick={() => copyToClipboard(kontentConfig.apiKey, 'apiKey')}
+                onClick={() => copyToClipboard(config.kontent.apiKey, 'apiKey')}
                 className="p-2 text-gray-400 hover:text-gray-600"
                 title="Copy API Key"
               >
                 {copiedField === 'apiKey' ? <CheckCircle className="h-4 w-4 text-success-600" /> : <Copy className="h-4 w-4" />}
               </button>
             </div>
-            <p className="mt-1 text-xs text-gray-500">
-              Create this in Project Settings → API Keys → Management API keys
-            </p>
+            <div className="mt-1 flex items-center space-x-2">
+              <p className="text-xs text-gray-500">
+                Create this in Project Settings → API Keys → Management API keys
+              </p>
+              {config.kontent.apiKey && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-success-100 text-success-800">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  API Key Set
+                </span>
+              )}
+            </div>
           </div>
 
           <div>
@@ -266,8 +490,8 @@ export default function Settings() {
             <input
               type="text"
               id="projectId"
-              value={kontentConfig.projectId}
-              onChange={(e) => setKontentConfig(prev => ({ ...prev, projectId: e.target.value }))}
+              value={config.kontent.projectId}
+              onChange={(e) => updateConfig('kontent', 'projectId', e.target.value)}
               className="input-field"
               placeholder="Optional: Your project identifier"
             />
@@ -346,7 +570,11 @@ export default function Settings() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Default Environment
             </label>
-            <select className="input-field">
+            <select 
+              className="input-field"
+              value={config.preferences.defaultEnvironment}
+              onChange={(e) => updateConfig('preferences', 'defaultEnvironment', e.target.value)}
+            >
               <option value="">Select default environment</option>
               <option value="dev">Development</option>
               <option value="staging">Staging</option>
@@ -366,6 +594,8 @@ export default function Settings() {
                 <input
                   type="checkbox"
                   id="autoTest"
+                  checked={config.preferences.autoTestWebhooks}
+                  onChange={(e) => updateConfig('preferences', 'autoTestWebhooks', e.target.checked)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                 />
                 <label htmlFor="autoTest" className="ml-2 block text-sm text-gray-900">
@@ -376,6 +606,8 @@ export default function Settings() {
                 <input
                   type="checkbox"
                   id="retryFailed"
+                  checked={config.preferences.retryFailedDeliveries}
+                  onChange={(e) => updateConfig('preferences', 'retryFailedDeliveries', e.target.checked)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                 />
                 <label htmlFor="retryFailed" className="ml-2 block text-sm text-gray-900">
@@ -394,6 +626,8 @@ export default function Settings() {
                 <input
                   type="checkbox"
                   id="emailNotifications"
+                  checked={config.preferences.emailNotifications}
+                  onChange={(e) => updateConfig('preferences', 'emailNotifications', e.target.checked)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                 />
                 <label htmlFor="emailNotifications" className="ml-2 block text-sm text-gray-900">
@@ -404,6 +638,8 @@ export default function Settings() {
                 <input
                   type="checkbox"
                   id="browserNotifications"
+                  checked={config.preferences.browserNotifications}
+                  onChange={(e) => updateConfig('preferences', 'browserNotifications', e.target.checked)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                 />
                 <label htmlFor="browserNotifications" className="ml-2 block text-sm text-gray-900">
@@ -437,9 +673,30 @@ export default function Settings() {
             <Download className="h-4 w-4 mr-2" />
             Export Configuration
           </button>
-          <button className="btn-secondary inline-flex items-center">
+          <label htmlFor="importConfig" className="btn-secondary inline-flex items-center cursor-pointer">
+            <input
+              type="file"
+              id="importConfig"
+              accept="application/json"
+              onChange={importConfig}
+              className="hidden"
+            />
             <Download className="h-4 w-4 mr-2" />
             Import Configuration
+          </label>
+          <button
+            onClick={resetToDefaults}
+            className="btn-secondary inline-flex items-center"
+          >
+            <SettingsIcon className="h-4 w-4 mr-2" />
+            Reset Preferences
+          </button>
+          <button
+            onClick={clearConfig}
+            className="btn-danger inline-flex items-center"
+          >
+            <AlertCircle className="h-4 w-4 mr-2" />
+            Clear All
           </button>
         </div>
       </div>

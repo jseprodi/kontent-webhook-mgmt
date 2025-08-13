@@ -1,6 +1,7 @@
 {
   "name": "kontent-webhook-manager",
   "version": "1.0.0",
+  "type": "module",
   "description": "A custom app for managing Kontent.ai webhooks with testing and debugging capabilities",
   "main": "index.js",
   "scripts": {

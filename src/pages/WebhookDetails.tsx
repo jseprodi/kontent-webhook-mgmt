@@ -276,29 +276,195 @@ export default function WebhookDetails() {
           {/* Recent Test Results */}
           <div className="card">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Test Results</h2>
+            
             {recentTestResults.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {recentTestResults.map((result, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      {result.success ? (
-                        <CheckCircle className="h-5 w-5 text-success-600" />
-                      ) : (
-                        <XCircle className="h-5 w-5 text-danger-600" />
-                      )}
-                      <div>
+                  <div key={index} className={`p-4 rounded-lg border ${
+                    result.success 
+                      ? 'bg-success-50 border-success-200' 
+                      : 'bg-danger-50 border-danger-200'
+                  }`}>
+                    {/* Basic Result Info */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-3">
+                        {result.success ? (
+                          <CheckCircle className="h-5 w-5 text-success-600" />
+                        ) : (
+                          <XCircle className="h-5 w-5 text-danger-600" />
+                        )}
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {result.success ? 'Success' : 'Failed'}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {formatDate(result.timestamp)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
                         <p className="text-sm font-medium text-gray-900">
-                          {result.success ? 'Success' : 'Failed'}
+                          {result.statusCode > 0 ? result.statusCode : 'N/A'}
                         </p>
-                        <p className="text-xs text-gray-500">
-                          {formatDate(result.timestamp)}
-                        </p>
+                        <p className="text-xs text-gray-500">{result.responseTime}ms</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-900">{result.statusCode}</p>
-                      <p className="text-xs text-gray-500">{result.responseTime}ms</p>
-                    </div>
+
+                    {/* Failure Analysis (only show for failed tests) */}
+                    {!result.success && result.failureDetails && (
+                      <div className="mt-4 space-y-4">
+                        {/* Failure Point Badge */}
+                        {result.failurePoint && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-medium text-gray-700">Failure Point:</span>
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              result.failurePoint === 'connection' ? 'bg-blue-100 text-blue-800' :
+                              result.failurePoint === 'timeout' ? 'bg-yellow-100 text-yellow-800' :
+                              result.failurePoint === 'authentication' ? 'bg-red-100 text-red-800' :
+                              result.failurePoint === 'authorization' ? 'bg-purple-100 text-purple-800' :
+                              result.failurePoint === 'validation' ? 'bg-orange-100 text-orange-800' :
+                              result.failurePoint === 'server_error' ? 'bg-red-100 text-red-800' :
+                              result.failurePoint === 'client_error' ? 'bg-orange-100 text-orange-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {result.failurePoint.replace('_', ' ').toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Error Details */}
+                        <div className="bg-white rounded-lg p-3 border">
+                          <h4 className="text-sm font-medium text-gray-900 mb-2">Error Details</h4>
+                          <div className="space-y-2 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-700">Stage:</span>
+                              <span className="ml-2 text-gray-900">{result.failureDetails.stage}</span>
+                            </div>
+                            {result.failureDetails.errorCode && (
+                              <div>
+                                <span className="font-medium text-gray-700">Error Code:</span>
+                                <span className="ml-2 text-gray-900">{result.failureDetails.errorCode}</span>
+                              </div>
+                            )}
+                            <div>
+                              <span className="font-medium text-gray-700">Message:</span>
+                              <span className="ml-2 text-gray-900">{result.failureDetails.errorMessage}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Suggestion:</span>
+                              <span className="ml-2 text-gray-900">{result.failureDetails.suggestion}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Troubleshooting Guide */}
+                        {result.troubleshooting && (
+                          <div className="bg-white rounded-lg p-3 border">
+                            <h4 className="text-sm font-medium text-gray-900 mb-3">Troubleshooting Guide</h4>
+                            
+                            {/* Common Causes */}
+                            <div className="mb-3">
+                              <h5 className="text-xs font-medium text-gray-700 mb-2">Common Causes:</h5>
+                              <ul className="text-xs text-gray-600 space-y-1">
+                                {result.troubleshooting.commonCauses.map((cause, idx) => (
+                                  <li key={idx} className="flex items-start">
+                                    <span className="text-danger-500 mr-2">•</span>
+                                    {cause}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+
+                            {/* Immediate Actions */}
+                            <div className="mb-3">
+                              <h5 className="text-xs font-medium text-gray-700 mb-2">Immediate Actions:</h5>
+                              <ul className="text-xs text-gray-600 space-y-1">
+                                {result.troubleshooting.immediateActions.map((action, idx) => (
+                                  <li key={idx} className="flex items-start">
+                                    <span className="text-warning-500 mr-2">→</span>
+                                    {action}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+
+                            {/* Long-term Solutions */}
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-700 mb-2">Long-term Solutions:</h5>
+                              <ul className="text-xs text-gray-600 space-y-1">
+                                {result.troubleshooting.longTermSolutions.map((solution, idx) => (
+                                  <li key={idx} className="flex items-start">
+                                    <span className="text-success-500 mr-2">✓</span>
+                                    {solution}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Request/Response Details (expandable) */}
+                        <div className="bg-white rounded-lg p-3 border">
+                          <details className="group">
+                            <summary className="cursor-pointer text-sm font-medium text-gray-900 hover:text-gray-700">
+                              Technical Details
+                              <span className="ml-2 text-gray-500 group-open:rotate-180 transition-transform">
+                                ▼
+                              </span>
+                            </summary>
+                            <div className="mt-3 space-y-3 text-xs">
+                              {/* Request Payload */}
+                              {result.failureDetails?.requestPayload && (
+                                <div>
+                                  <h6 className="font-medium text-gray-700 mb-1">Request Payload:</h6>
+                                  <pre className="bg-gray-50 p-2 rounded text-gray-600 overflow-x-auto">
+                                    {JSON.stringify(result.failureDetails.requestPayload, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+
+                              {/* Response Headers */}
+                              {result.failureDetails?.responseHeaders && (
+                                <div>
+                                  <h6 className="font-medium text-gray-700 mb-1">Response Headers:</h6>
+                                  <pre className="bg-gray-50 p-2 rounded text-gray-600 overflow-x-auto">
+                                    {JSON.stringify(result.failureDetails.responseHeaders, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+
+                              {/* Full Response */}
+                              {result.response && (
+                                <div>
+                                  <h6 className="font-medium text-gray-700 mb-1">Full Response:</h6>
+                                  <pre className="bg-gray-50 p-2 rounded text-gray-600 overflow-x-auto max-h-32">
+                                    {result.response}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          </details>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Success Response (only show for successful tests) */}
+                    {result.success && result.response && (
+                      <div className="mt-3 bg-white rounded-lg p-3 border">
+                        <h4 className="text-sm font-medium text-gray-900 mb-2">Response</h4>
+                        <details className="group">
+                          <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-800">
+                            View Response Details
+                            <span className="ml-2 text-gray-500 group-open:rotate-180 transition-transform">
+                              ▼
+                            </span>
+                          </summary>
+                          <pre className="mt-2 bg-gray-50 p-2 rounded text-gray-600 overflow-x-auto max-h-32">
+                            {result.response}
+                          </pre>
+                        </details>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -323,12 +489,21 @@ export default function WebhookDetails() {
                 disabled={isTesting}
                 className="w-full btn-primary"
               >
-                <Play className="h-4 w-4 mr-2" />
-                Test Now
+                {isTesting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Testing...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 mr-2" />
+                    Test Now
+                  </>
+                )}
               </button>
               <Link
                 to={`/webhooks/${id}/edit`}
-                className="w-full btn-secondary"
+                className="w-full btn-secondary inline-flex items-center justify-center"
               >
                 <Edit className="h-4 w-4 mr-2" />
                 Edit Webhook

@@ -163,14 +163,14 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Performance Chart Placeholder */}
+      {/* Performance Chart */}
       <div className="card">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Performance Overview</h2>
         <div className="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
           <div className="text-center text-gray-500">
             <BarChart3 className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-            <p>Performance charts coming soon</p>
-            <p className="text-sm">Track webhook delivery success rates over time</p>
+            <p>No performance data available</p>
+            <p className="text-sm">Performance metrics will appear here once webhooks are created and tested</p>
           </div>
         </div>
       </div>

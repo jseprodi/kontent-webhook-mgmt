@@ -35,12 +35,39 @@ export interface WebhookDeliveryLog {
 }
 
 export interface WebhookTestResult {
+  id: string
+  webhookId: string
   success: boolean
   statusCode: number
   responseTime: number
   response: string
   error?: string
   timestamp: string
+  
+  // Enhanced failure analysis
+  failurePoint?: 'connection' | 'timeout' | 'authentication' | 'authorization' | 'validation' | 'server_error' | 'client_error' | 'network' | 'unknown'
+  failureDetails?: {
+    stage: string
+    errorCode?: string
+    errorMessage: string
+    suggestion: string
+    httpHeaders?: Record<string, string>
+    requestPayload?: any
+    responseHeaders?: Record<string, string>
+    networkInfo?: {
+      dnsResolution?: boolean
+      tlsHandshake?: boolean
+      connectionEstablished?: boolean
+      requestSent?: boolean
+      responseReceived?: boolean
+    }
+  }
+  troubleshooting?: {
+    commonCauses: string[]
+    immediateActions: string[]
+    longTermSolutions: string[]
+    relatedDocs?: string[]
+  }
 }
 
 export interface KontentConfig {

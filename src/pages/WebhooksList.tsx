@@ -12,7 +12,8 @@ import {
   Trash2,
   ExternalLink,
   Activity,
-  Webhook
+  Webhook,
+  X
 } from 'lucide-react'
 
 export default function WebhooksList() {
@@ -20,6 +21,8 @@ export default function WebhooksList() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null)
+  const [testingWebhooks, setTestingWebhooks] = useState<Set<string>>(new Set())
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   useEffect(() => {
     fetchWebhooks()
@@ -45,9 +48,48 @@ export default function WebhooksList() {
 
   const handleTest = async (id: string) => {
     try {
-      await testWebhook(id)
+      setTestingWebhooks(prev => new Set(prev).add(id))
+      const result = await testWebhook(id)
+      
+      if (result.success) {
+        setNotification({ 
+          type: 'success', 
+          message: `Webhook test successful! Status: ${result.statusCode}, Response time: ${result.responseTime}ms` 
+        })
+      } else {
+        // Enhanced failure notification with troubleshooting info
+        let failureMessage = `Webhook test failed! Status: ${result.statusCode}`
+        
+        if (result.failurePoint) {
+          failureMessage += ` | Failure Point: ${result.failurePoint.replace('_', ' ').toUpperCase()}`
+        }
+        
+        if (result.failureDetails?.suggestion) {
+          failureMessage += ` | Suggestion: ${result.failureDetails.suggestion}`
+        }
+        
+        setNotification({ 
+          type: 'error', 
+          message: failureMessage 
+        })
+      }
+      
+      // Clear notification after 5 seconds
+      setTimeout(() => setNotification(null), 5000)
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      setNotification({ 
+        type: 'error', 
+        message: `Webhook test error: ${errorMessage}` 
+      })
+      setTimeout(() => setNotification(null), 5000)
       console.error('Failed to test webhook:', error)
+    } finally {
+      setTestingWebhooks(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(id)
+        return newSet
+      })
     }
   }
 
@@ -119,6 +161,25 @@ export default function WebhooksList() {
 
       {/* Webhooks Table */}
       <div className="card">
+        {/* Notification */}
+        {notification && (
+          <div className={`mb-4 p-4 rounded-lg border ${
+            notification.type === 'success' 
+              ? 'bg-success-50 border-success-200 text-success-800' 
+              : 'bg-danger-50 border-danger-200 text-danger-800'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className="font-medium">{notification.message}</span>
+              <button
+                onClick={() => setNotification(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+        
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -174,15 +235,32 @@ export default function WebhooksList() {
                         ? new Date(webhook.lastTriggered).toLocaleDateString()
                         : 'Never'
                       }
+                      {webhook.deliveryAttempts > 0 && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          Last test: {webhook.successfulDeliveries > 0 ? '✅' : '❌'} 
+                          ({webhook.successfulDeliveries}/{webhook.deliveryAttempts})
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={() => handleTest(webhook.id)}
-                          className="text-primary-600 hover:text-primary-900"
-                          title="Test webhook"
+                          disabled={testingWebhooks.has(webhook.id) || !webhook.isActive}
+                          className={`${
+                            testingWebhooks.has(webhook.id)
+                              ? 'text-gray-400 cursor-not-allowed'
+                              : webhook.isActive
+                                ? 'text-primary-600 hover:text-primary-900'
+                                : 'text-gray-400 cursor-not-allowed'
+                          }`}
+                          title={webhook.isActive ? 'Test webhook' : 'Cannot test inactive webhook'}
                         >
-                          <Play className="h-4 w-4" />
+                          {testingWebhooks.has(webhook.id) ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
                         </button>
                         <Link
                           to={`/webhooks/${webhook.id}`}

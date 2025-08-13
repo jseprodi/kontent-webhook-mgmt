@@ -1,8 +1,7 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { getCustomAppContext, CustomAppContext } from '@kontent-ai/custom-app-sdk'
+import React, { createContext, useContext, useEffect, useState, ReactNode, useMemo } from 'react'
 
 interface KontentContextType {
-  context: CustomAppContext | null
+  context: any | null
   isLoading: boolean
   error: string | null
   environmentId: string | null
@@ -27,7 +26,7 @@ interface KontentProviderProps {
 }
 
 export function KontentProvider({ children }: KontentProviderProps) {
-  const [context, setContext] = useState<CustomAppContext | null>(null)
+  const [context, setContext] = useState<any | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,14 +36,28 @@ export function KontentProvider({ children }: KontentProviderProps) {
         setIsLoading(true)
         setError(null)
         
-        const response = await getCustomAppContext()
-        
-        if (response.isError) {
-          setError(`Error ${response.code}: ${response.description}`)
-          console.error('Failed to get Kontent.ai context:', response)
+        // Check if we're running in the Kontent.ai environment
+        if (typeof window !== 'undefined' && window.location.hostname.includes('kontent.ai')) {
+          try {
+            // Dynamically import the SDK only when needed
+            const { getCustomAppContext } = await import('@kontent-ai/custom-app-sdk')
+            const response = await getCustomAppContext()
+            
+            if (response.isError) {
+              setError(`Error ${response.code}: ${response.description}`)
+              console.error('Failed to get Kontent.ai context:', response)
+            } else {
+              setContext(response)
+              console.log('Kontent.ai context loaded:', response)
+            }
+          } catch (sdkError) {
+            console.warn('Failed to load Kontent.ai custom app SDK:', sdkError)
+            setError('Failed to load Kontent.ai SDK')
+          }
         } else {
-          setContext(response)
-          console.log('Kontent.ai context loaded:', response)
+          // Local development mode - no context available
+          console.log('Running in local development mode - no Kontent.ai context available')
+          setContext(null)
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to initialize Kontent.ai context'
@@ -58,16 +71,16 @@ export function KontentProvider({ children }: KontentProviderProps) {
     initializeKontent()
   }, [])
 
-  const value: KontentContextType = {
+  const value = useMemo<KontentContextType>(() => ({
     context,
     isLoading,
     error,
-    environmentId: context?.context?.environmentId || null,
-    userId: context?.context?.userId || null,
-    userEmail: context?.context?.userEmail || null,
-    userRoles: context?.context?.userRoles || null,
-    appConfig: context?.config || null,
-  }
+    environmentId: context?.environmentId || null,
+    userId: context?.userId || null,
+    userEmail: context?.userEmail || null,
+    userRoles: context?.userRoles || null,
+    appConfig: context || null,
+  }), [context, isLoading, error])
 
   return (
     <KontentContext.Provider value={value}>

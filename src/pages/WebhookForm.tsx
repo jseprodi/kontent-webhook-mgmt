@@ -289,6 +289,7 @@ export default function WebhookForm() {
             type="submit"
             disabled={isSubmitting}
             className="btn-primary"
+                            onClick={() => {}}
           >
             {isSubmitting ? (
               <>

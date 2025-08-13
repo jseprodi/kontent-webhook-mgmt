@@ -6,37 +6,68 @@ import { useKontent } from './KontentContext'
 // Note: This service requires a valid Management API key to be set via useKontent().setApiKey()
 const webhookService = {
   baseUrl: 'https://manage.kontent.ai/v2',
+  // Alternative base URLs to try if the main one doesn't work
+  alternativeBaseUrls: [
+    'https://manage.kontent.ai/v2',
+    'https://manage.kontent.ai/v1',
+    'https://api.kontent.ai/v2',
+    'https://api.kontent.ai/v1'
+  ],
   
   async request(endpoint: string, options: RequestInit = {}) {
-    const url = `${this.baseUrl}${endpoint}`
-    console.log('Making API request to:', url)
-    console.log('Request options:', options)
-    
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    })
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error('API error response:', response.status, response.statusText, errorData)
+    // Try different base URLs to find the working one
+    for (const baseUrl of this.alternativeBaseUrls) {
+      const url = `${baseUrl}${endpoint}`
+      console.log(`Trying API request to: ${url}`)
       
-      // Enhanced error handling for validation errors
-      if (errorData.validation_errors && Array.isArray(errorData.validation_errors)) {
-        console.error('Validation errors details:', errorData.validation_errors)
-        const validationDetails = errorData.validation_errors
-          .map((err: any) => `${err.field || 'Unknown field'}: ${err.message || 'Invalid value'}`)
-          .join('; ')
-        throw new Error(`Validation failed: ${validationDetails}`)
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+          },
+        })
+        
+        if (response.ok) {
+          console.log(`✅ Success with base URL: ${baseUrl}`)
+          // Update the working base URL for future requests
+          this.baseUrl = baseUrl
+          return response.json()
+        }
+        
+        // If we get a 404, try the next base URL
+        if (response.status === 404) {
+          console.log(`❌ 404 with base URL: ${baseUrl}, trying next...`)
+          continue
+        }
+        
+        // For other errors, show the details
+        const errorData = await response.json().catch(() => ({}))
+        console.error('API error response:', response.status, response.statusText, errorData)
+        
+        // Enhanced error handling for validation errors
+        if (errorData.validation_errors && Array.isArray(errorData.validation_errors)) {
+          console.error('Validation errors details:', errorData.validation_errors)
+          const validationDetails = errorData.validation_errors
+            .map((err: any) => `${err.field || 'Unknown field'}: ${err.message || 'Invalid value'}`)
+            .join('; ')
+          throw new Error(`Validation failed: ${validationDetails}`)
+        }
+        
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`)
+      } catch (error) {
+        console.log(`❌ Error with base URL: ${baseUrl}:`, error)
+        if (baseUrl === this.alternativeBaseUrls[this.alternativeBaseUrls.length - 1]) {
+          // This was the last base URL to try
+          throw error
+        }
+        // Try the next base URL
+        continue
       }
-      
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`)
     }
     
-    return response.json()
+    throw new Error('All base URLs failed. Please check your API configuration.')
   },
   
   async getWebhooks(environmentId: string, apiKey: string) {
@@ -296,7 +327,21 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
             throw new Error(`Environment not accessible: ${projectResponse.status} ${projectResponse.statusText}`)
           }
           
-          console.log('Environment verified, creating webhook...')
+          console.log('Environment verified, checking webhook endpoint availability...')
+          
+          // Check if webhook endpoint is available
+          const webhooksListResponse = await fetch(`https://manage.kontent.ai/v2/projects/${environmentId}/webhooks`, {
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+          })
+          
+          if (webhooksListResponse.status === 404) {
+            throw new Error('Webhook management is not available in this environment. Please check if webhooks are enabled in your Kontent.ai project settings.')
+          }
+          
+          console.log('Webhook endpoint verified, creating webhook...')
           
           // Format webhook data according to Kontent.ai Management API v2 specification
           // The triggers field should be an object, not an array

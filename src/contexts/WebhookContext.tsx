@@ -9,6 +9,8 @@ const webhookService = {
   
   async request(endpoint: string, options: RequestInit = {}) {
     const url = `${this.baseUrl}${endpoint}`
+    console.log('Making API request to:', url)
+    console.log('Request options:', options)
     
     const response = await fetch(url, {
       ...options,
@@ -20,6 +22,7 @@ const webhookService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
+      console.error('API error response:', response.status, response.statusText, errorData)
       throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`)
     }
     
@@ -270,16 +273,45 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       if (apiKey) {
         console.log('Using real API service')
         try {
-          const createdWebhook = await webhookService.createWebhook(environmentId || 'default', apiKey, newWebhook)
+          // First, verify the environment/project exists
+          console.log('Verifying environment access...')
+          const projectResponse = await fetch(`https://manage.kontent.ai/v2/projects/${environmentId}`, {
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+          })
+          
+          if (!projectResponse.ok) {
+            throw new Error(`Environment not accessible: ${projectResponse.status} ${projectResponse.statusText}`)
+          }
+          
+          console.log('Environment verified, creating webhook...')
+          
+          // Format webhook data according to Kontent.ai Management API v2 specification
+          const apiWebhookData = {
+            name: newWebhook.name,
+            url: newWebhook.url,
+            triggers: newWebhook.triggers.map(trigger => ({
+              codename: trigger.codename,
+              enabled: trigger.isEnabled
+            })),
+            headers: newWebhook.headers,
+            is_active: newWebhook.isActive
+          }
+          
+          console.log('API webhook data:', apiWebhookData)
+          
+          const createdWebhook = await webhookService.createWebhook(environmentId || 'default', apiKey, apiWebhookData)
           console.log('API response:', createdWebhook)
           newWebhook.id = createdWebhook.id // Update ID with the one from the API
-          newWebhook.createdAt = createdWebhook.createdAt
-          newWebhook.updatedAt = createdWebhook.updatedAt
+          newWebhook.createdAt = createdWebhook.created_at || createdWebhook.createdAt
+          newWebhook.updatedAt = createdWebhook.updated_at || createdWebhook.updatedAt
           
           // Add to local state after successful API call
           console.log('Adding webhook to local state via API path')
           dispatch({ type: 'ADD_WEBHOOK', payload: newWebhook })
-          console.log('Webhook added to state via API path')
+          console.log('Webhook added to local state via API path')
         } catch (error) {
           console.error('API error:', error)
           const errorMessage = error instanceof Error ? error.message : 'Failed to create webhook'
@@ -361,10 +393,22 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       // Use the real Kontent.ai API service
       if (apiKey) {
         try {
-          const updatedWebhookData = await webhookService.updateWebhook(environmentId || 'default', apiKey, id, updatedWebhook)
+          // Format webhook data according to Kontent.ai Management API v2 specification
+          const apiWebhookData = {
+            name: updatedWebhook.name,
+            url: updatedWebhook.url,
+            triggers: updatedWebhook.triggers.map(trigger => ({
+              codename: trigger.codename,
+              enabled: trigger.isEnabled
+            })),
+            headers: updatedWebhook.headers,
+            is_active: updatedWebhook.isActive
+          }
+          
+          const updatedWebhookData = await webhookService.updateWebhook(environmentId || 'default', apiKey, id, apiWebhookData)
           updatedWebhook.id = updatedWebhookData.id
-          updatedWebhook.createdAt = updatedWebhookData.createdAt
-          updatedWebhook.updatedAt = updatedWebhookData.updatedAt
+          updatedWebhook.createdAt = updatedWebhookData.created_at || updatedWebhookData.createdAt
+          updatedWebhook.updatedAt = updatedWebhookData.updated_at || updatedWebhookData.updatedAt
           
           // Update local state after successful API call
           dispatch({ type: 'UPDATE_WEBHOOK', payload: updatedWebhook })

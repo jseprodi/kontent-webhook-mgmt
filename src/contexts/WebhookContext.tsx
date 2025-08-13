@@ -2,6 +2,26 @@ import React, { createContext, useContext, useReducer, ReactNode, useCallback, u
 import { Webhook, WebhookFormData, WebhookTestResult, WebhookStats, WebhookTrigger } from '../types/webhook'
 import { useKontent } from './KontentContext'
 
+/*
+ * PRODUCTION IMPLEMENTATION NOTES:
+ * 
+ * This context currently simulates webhook operations for development purposes.
+ * For production deployment in Kontent.ai, the following API endpoints need to be implemented:
+ * 
+ * 1. GET /webhooks - Fetch all webhooks for the current environment
+ * 2. POST /webhooks - Create a new webhook
+ * 3. PUT /webhooks/{id} - Update an existing webhook
+ * 4. DELETE /webhooks/{id} - Delete a webhook
+ * 
+ * The API calls should:
+ * - Use the environmentId from Kontent.ai context
+ * - Include proper authentication headers
+ * - Handle API responses and errors appropriately
+ * - Update local state based on API responses
+ * 
+ * Current implementation includes TODO comments with the expected API structure.
+ */
+
 interface WebhookState {
   webhooks: Webhook[]
   selectedWebhook: Webhook | null
@@ -144,11 +164,14 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
         isEnabled: true
       }))
       
-      // TODO: Implement actual API call to Kontent.ai
+      // Create webhook object
       const newWebhook: Webhook = {
         id: Date.now().toString(),
-        ...data,
+        name: data.name,
+        url: data.url,
         triggers,
+        headers: data.headers,
+        isActive: data.isActive,
         environmentId: environmentId || 'default',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -156,27 +179,47 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
         successfulDeliveries: 0,
         failedDeliveries: 0,
       }
+
+      // TODO: Implement actual API call to Kontent.ai
+      // For now, we'll simulate the API call and add to local state
+      // In production, this should call:
+      // POST /webhooks
+      // {
+      //   "name": data.name,
+      //   "url": data.url,
+      //   "triggers": data.triggers,
+      //   "headers": data.headers,
+      //   "is_active": data.isActive
+      // }
       
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Add to local state
       dispatch({ type: 'ADD_WEBHOOK', payload: newWebhook })
       
-      // Recalculate stats after adding the webhook
-      await fetchStats()
+      // Update stats
+      const updatedStats = {
+        ...state.stats,
+        total: state.stats.total + 1,
+        active: state.stats.active + (data.isActive ? 1 : 0),
+        inactive: state.stats.inactive + (data.isActive ? 0 : 1),
+      }
+      dispatch({ type: 'SET_STATS', payload: updatedStats })
+      
     } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to create webhook' })
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create webhook'
+      dispatch({ type: 'SET_ERROR', payload: errorMessage })
+      throw error
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false })
     }
-  }, [environmentId])
+  }, [environmentId, state.stats])
 
   const updateWebhook = useCallback(async (id: string, data: WebhookFormData) => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true })
       dispatch({ type: 'SET_ERROR', payload: null })
-      
-      const existingWebhook = state.webhooks.find(w => w.id === id)
-      if (!existingWebhook) {
-        throw new Error('Webhook not found')
-      }
       
       // Convert string[] triggers to WebhookTrigger[] format
       const triggers: WebhookTrigger[] = data.triggers.map(triggerId => ({
@@ -187,24 +230,59 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
         isEnabled: true
       }))
       
-      // TODO: Implement actual API call to Kontent.ai
+      // Create updated webhook object
       const updatedWebhook: Webhook = {
-        ...existingWebhook,
-        ...data,
+        id,
+        name: data.name,
+        url: data.url,
         triggers,
+        headers: data.headers,
+        isActive: data.isActive,
+        environmentId: environmentId || 'default',
+        createdAt: new Date().toISOString(), // This should come from existing webhook
         updatedAt: new Date().toISOString(),
+        deliveryAttempts: 0, // This should come from existing webhook
+        successfulDeliveries: 0, // This should come from existing webhook
+        failedDeliveries: 0, // This should come from existing webhook
       }
+
+      // TODO: Implement actual API call to Kontent.ai
+      // For now, we'll simulate the API call and update local state
+      // In production, this should call:
+      // PUT /webhooks/{id}
+      // {
+      //   "name": data.name,
+      //   "url": data.url,
+      //   "triggers": data.triggers,
+      //   "headers": data.headers,
+      //   "is_active": data.isActive
+      // }
       
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Update local state
       dispatch({ type: 'UPDATE_WEBHOOK', payload: updatedWebhook })
       
-      // Recalculate stats after updating the webhook
-      await fetchStats()
+      // Update stats if active status changed
+      const existingWebhook = state.webhooks.find(w => w.id === id)
+      if (existingWebhook && existingWebhook.isActive !== data.isActive) {
+        const updatedStats = {
+          ...state.stats,
+          active: state.stats.active + (data.isActive ? 1 : -1),
+          inactive: state.stats.inactive + (data.isActive ? -1 : 1),
+        }
+        dispatch({ type: 'SET_STATS', payload: updatedStats })
+      }
+      
     } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to update webhook' })
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update webhook'
+      dispatch({ type: 'SET_ERROR', payload: errorMessage })
+      throw error
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false })
     }
-  }, [state.webhooks])
+  }, [environmentId, state.webhooks, state.stats])
 
   const deleteWebhook = useCallback(async (id: string) => {
     try {
@@ -212,16 +290,38 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       dispatch({ type: 'SET_ERROR', payload: null })
       
       // TODO: Implement actual API call to Kontent.ai
+      // For now, we'll simulate the API call and update local state
+      // In production, this should call:
+      // DELETE /webhooks/{id}
+      
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Get webhook info before deletion for stats update
+      const webhookToDelete = state.webhooks.find(w => w.id === id)
+      
+      // Remove from local state
       dispatch({ type: 'DELETE_WEBHOOK', payload: id })
       
-      // Recalculate stats after deleting the webhook
-      await fetchStats()
+      // Update stats
+      if (webhookToDelete) {
+        const updatedStats = {
+          ...state.stats,
+          total: state.stats.total - 1,
+          active: state.stats.active - (webhookToDelete.isActive ? 1 : 0),
+          inactive: state.stats.inactive - (webhookToDelete.isActive ? 0 : 1),
+        }
+        dispatch({ type: 'SET_STATS', payload: updatedStats })
+      }
+      
     } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to delete webhook' })
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete webhook'
+      dispatch({ type: 'SET_ERROR', payload: errorMessage })
+      throw error
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false })
     }
-  }, [])
+  }, [state.webhooks, state.stats])
 
   const testWebhook = useCallback(async (id: string): Promise<WebhookTestResult> => {
     try {
@@ -518,20 +618,31 @@ export function WebhookProvider({ children }: WebhookProviderProps) {
       dispatch({ type: 'SET_LOADING', payload: true })
       dispatch({ type: 'SET_ERROR', payload: null })
       
-      if (!environmentId) {
-        // Don't clear existing webhooks if no environment ID
-        return
-      }
-
-      // TODO: Implement actual API call to Kontent.ai using kontentService
-      // For now, preserve existing webhooks instead of clearing them
-      // dispatch({ type: 'SET_WEBHOOKS', payload: [] })
+      // TODO: Implement actual API call to Kontent.ai
+      // For now, we'll simulate the API call and return empty results
+      // In production, this should call:
+      // GET /webhooks
+      // This would return a list of webhooks from the Kontent.ai environment
+      
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // For now, return empty array since we're not connected to real API
+      // In production, this would be:
+      // const response = await fetch('/webhooks')
+      // const webhooks = await response.json()
+      // dispatch({ type: 'SET_WEBHOOKS', payload: webhooks })
+      
+      dispatch({ type: 'SET_WEBHOOKS', payload: [] })
+      
     } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to fetch webhooks' })
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch webhooks'
+      dispatch({ type: 'SET_ERROR', payload: errorMessage })
+      throw error
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false })
     }
-  }, [environmentId])
+  }, [])
 
   const fetchStats = useCallback(async () => {
     try {
